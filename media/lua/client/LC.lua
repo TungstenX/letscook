@@ -178,6 +178,14 @@ function LetsCook.needsWater(evo, vessel)
   return not LetsCook.startsWith(vessel:getType(), evo:getBaseItem())
 end
 
+local function onExample(player)
+	player:Say("This is a custom slice!")
+end
+
+local function exampleFunction(menu, player)
+	menu:addSlice("What's This?", getTexture("media/ui/emotes/shrug.png"), onExample, player)
+end
+
 LetsCook.showCookingUI = function(item)
   print("showCookingUI: ", tostring(item:getType()))  
   -- Get all food and vessel items
@@ -222,7 +230,9 @@ LetsCook.showCookingUI = function(item)
   print("allTools")
   for k, v in pairs(allTools) do
     print(k .. ": " .. tostring(v[1][2]:getName()))
-  end  
+  end 
+
+  LetsCookMenuAPI.registerSlice("example", exampleFunction)
 end 
 
 function LetsCook.splitString(inputstr, sep)
