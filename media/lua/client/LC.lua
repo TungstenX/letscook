@@ -57,21 +57,21 @@ function LetsCook.debugPrintEvolvedRecipe(evolvedRecipe)
 end
 
 function LetsCook.init()
-  -- prune ALL_RECIPES
+  LetsCook.ALL_FOOD_RECIPES = {}
   local size = getAllRecipes():size()
   for i = 0, size - 1 do
     local v = getAllRecipes():get(i)
     if v:getCategory() == 'Cooking' then
-      if LetsCook.LOG.debug then print("Adding recipe from list: " .. tostring(v:getName()) .. ": " .. tostring(v:getCategory())) end
+      if LetsCook.LOG.debug then print("Adding recipe from list: " .. tostring(v:getName())) end
       table.insert(LetsCook.ALL_FOOD_RECIPES, v)
     end
   end
-  -- prune ALL_EVOLVED_RECIPES
+  LetsCook.ALL_EVOLVED_RECIPES['Rest'] = {}
   size = RecipeManager.getAllEvolvedRecipes():size()
   for i = 0, size - 1 do    
     local v = RecipeManager.getAllEvolvedRecipes():get(i)
     if v:isCookable() then
-      if LetsCook.LOG.debug then print("Adding evolved recipe from list: " .. tostring(v:getName()) .. ": " .. tostring(v:getCategory())) end
+      if LetsCook.LOG.debug then print("Adding evolved recipe from list: " .. tostring(v:getName())) end
       table.insert(LetsCook.ALL_EVOLVED_RECIPES['Rest'], v)
       print(LetsCook.debugPrintEvolvedRecipe(v))
     end    

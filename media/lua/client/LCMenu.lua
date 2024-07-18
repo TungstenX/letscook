@@ -65,6 +65,8 @@ function LCMenu.UI:create()
   self:addChild(self.tick);
   self.tick:addOption("Test tick box");
   
+  LetsCook.init()
+  
   local foodList, vesselList, toolList = {}, {}, {}
   LCFindItems.findAll(foodList, vesselList, toolList)
 end
