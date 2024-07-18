@@ -1,0 +1,6 @@
+version=1.00
+id=3230621770
+title=Let's Cook
+description=[h1]Alternative cooking menu[/h1]
+tags=Build 41;Balance;Food;Interface;Items;Misc;Realistic;Silly/Fun
+visibility=private

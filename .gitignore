@@ -1,3 +1,4 @@
 copy.sh
-.resources
+resources
 info.txt
+exclude-file.txt
