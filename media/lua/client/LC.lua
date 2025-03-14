@@ -15,6 +15,9 @@
 │ Lets Cook │
 └───────────┘
 ]]
+require "LCUtil"
+require "LCMenu"
+require "LCFindItems"
 
 LetsCook = LetsCook or {}
 LetsCook.LOG = LetsCook.LOG or {}
@@ -23,8 +26,7 @@ LetsCook.LOG.trace = false
 
 LetsCook.ALL_FOOD_RECIPES = LetsCook.ALL_FOOD_RECIPES or {}
 LetsCook.ALL_EVOLVED_RECIPES = LetsCook.ALL_EVOLVED_RECIPES or {}
-LetsCook.ALL_EVOLVED_RECIPES['Rest'] = LetsCook.ALL_EVOLVED_RECIPES['Rest'] or {}
---LetsCook.ALL_VESSELS = LetsCook.ALL_VESSELS or {}
+LetsCook.favEvoRecipes = {}
 
 function LetsCook.debugPrintItemRecipe(itemRecipe)
   local output = "\n    Item recipe (" .. tostring(itemRecipe:getName()) .. ")"
@@ -50,346 +52,182 @@ function LetsCook.debugPrintEvolvedRecipe(evolvedRecipe)
   local pi = evolvedRecipe:getPossibleItems()
   local size = pi:size()
   for i = 0, size - 1 do
-    local itemRecipe = pi[i]
+    local itemRecipe = pi:get(i)
     output = output .. LetsCook.debugPrintItemRecipe(itemRecipe)
   end    
   return output
 end
 
 function LetsCook.init()
+  local player = getPlayer()
   LetsCook.ALL_FOOD_RECIPES = {}
   local size = getAllRecipes():size()
   for i = 0, size - 1 do
-    local v = getAllRecipes():get(i)
-    if v:getCategory() == 'Cooking' then
-      if LetsCook.LOG.debug then print("Adding recipe from list: " .. tostring(v:getName())) end
-      table.insert(LetsCook.ALL_FOOD_RECIPES, v)
+    local recipe = getAllRecipes():get(i)
+    if recipe:getCategory() == 'Cooking' and not recipe:isHidden() and (not recipe:needToBeLearn() or (player and player:isRecipeKnown(recipe))) then
+      if LetsCook.LOG.debug then print("Adding recipe from list: " .. tostring(recipe:getName())) end
+      table.insert(LetsCook.ALL_FOOD_RECIPES, recipe)
     end
   end
-  LetsCook.ALL_EVOLVED_RECIPES['Rest'] = {}
+  LetsCook.ALL_EVOLVED_RECIPES = {}
   size = RecipeManager.getAllEvolvedRecipes():size()
   for i = 0, size - 1 do    
-    local v = RecipeManager.getAllEvolvedRecipes():get(i)
-    if v:isCookable() then
-      if LetsCook.LOG.debug then print("Adding evolved recipe from list: " .. tostring(v:getName())) end
-      table.insert(LetsCook.ALL_EVOLVED_RECIPES['Rest'], v)
-      print(LetsCook.debugPrintEvolvedRecipe(v))
+    local evo = RecipeManager.getAllEvolvedRecipes():get(i)
+    if evo:isCookable() and not evo:isHidden() then
+      if LetsCook.LOG.debug then print("Adding evolved recipe from list: " .. tostring(evo:getName())) end
+      if LetsCook.LOG.debug then print(LetsCook.debugPrintEvolvedRecipe(evo)) end
+      table.insert(LetsCook.ALL_EVOLVED_RECIPES, evo)
     end    
   end  
 end
 Events.OnGameStart.Add(LetsCook.init)
 
---[[
-function LetsCook.addItemToListOfList(theList, item)
-  if theList[item:getType()] == nil then 
-    theList[item:getType()] = {}
-  end
-  table.insert(theList[item:getType()], item)
+-- To preserve UI position between sessions --
+function LetsCook.saveModData()
+	local modData = LCUtil.getValidModData()
+	if LCMenu.UI.x ~= nil then
+		modData.position.x = LCMenu.UI.x
+		modData.position.y = LCMenu.UI.y
+		modData.position.isVisible = LCMenu.UI.isUIVisible
+	end
+  modData.favEvoRecipes = LetsCook.favEvoRecipes
+	ModData.add("LetsCook", modData)
 end
+Events.OnSave.Add(LetsCook.saveModData)
 
-function LetsCook.hasCanOpener(item)
-    local itemTags = item:getTags()
-    local size = itemTags:size()
-    for i = 0, size - 1 do
-      local tag = itemTags:get(i) or "None"
-      if tag == "CanOpener" then -- What about tag == "HasMetal"?
-        return true
-      end
-    end
-    return false
-end
-
--- Inspect all items in the container
--- @param itemContainer [in] the container to rummage through
--- @foodList [in, out] add found food item to this list
--- @vesselList [in, out] add found vessel item to this list
--- @toolList [in, out] add found tool item to this list
-function LetsCook.searchForItems(itemContainer, foodList, vesselList, toolList)
-  if itemContainer then
-    local items = itemContainer:getItems()
-    local size = items:size() 
-    for i = size - 1, 0, -1 do
-      local item = items:get(i)
-      if item ~= nil then
-        if item:getCategory() == "Container" then
-          -- unpack containers
-          LetsCook.searchForItems(item:getInventory(), foodList, vesselList)
-        elseif item:getDisplayCategory() == 'Cooking' or item:isCookable() then 
-          -- 'Cooking': vessel (something like a pot with no water or griddle pan but also can opener)
-          -- isCookable: vessel with water (usually?)
-          -- if contain a tag of canopener
-          if LetsCook.hasCanOpener(item) then
-            LetsCook.addItemToListOfList(toolList, item)
-          else
-            LetsCook.addItemToListOfList(vesselList, item)
-          end
-        elseif item:IsFood() or item:getDisplayCategory() == 'Food' then 
-          -- food item
-          LetsCook.addItemToListOfList(foodList, item)
-        end
-      end
-    end
+function LetsCook.loadModData()
+	local modData = LCUtil.getValidModData()
+	if LCMenu.UI.x ~= nil and modData.position and modData.position.x then
+		LCMenu.UI.x = modData.position.x
+		LCMenu.UI.y = modData.position.y
+		LCMenu.UI.isUIVisible = modData.position.isVisible
+	end
+  if modData.favEvoRecipes then
+    LetsCook.favEvoRecipes = modData.favEvoRecipes
   end
 end
+Events.OnLoad.Add(LetsCook.loadModData)
 
---Not used
-function LetsCook.getEvolvedRecipeOnBaseItem(evolvedRecipes, baseItem)
-  local size = evolvedRecipes:size()
-  for i = 0, size - 1 do
-    local evolvedRecipe = evolvedRecipes:get(i)
-    if evolvedRecipe:getBaseItem() == baseItem then -- or is cookable?
-      return evolvedRecipe
-      --local output = "\n(" .. i .. ") "
-      --output = output .. "\n\tBaseItem: " .. evolvedRecipe:getBaseItem()
-      --output = output .. "\n\tgetFullResultItem: " .. evolvedRecipe:getFullResultItem()
-      --output = output .. "\n\tgetOriginalname: " .. evolvedRecipe:getOriginalname()
-      --output = output .. "\n\tgetPossibleItems: " .. tostring(evolvedRecipe:getPossibleItems())
-      --output = output .. "\n\tgetResultItem: " .. evolvedRecipe:getResultItem()
-      --output = output .. "\n\tgetName: " .. evolvedRecipe:getName()
-      --output = output .. "\n\tgetMaxItems: " .. tostring(evolvedRecipe:getMaxItems())
-      --output = output .. "\n\tgetItemsList: " .. tostring(evolvedRecipe:getItemsList())
-      --print(output)
-    end
-  end 
-  return nil
-end
-
-function LetsCook.weightFoodItem(foodItem)
-  print("Food item" .. tostring(foodItem:getType()) .. " food type: " .. tostring(foodItem:getFoodType()))
-  return 0
-end
-
-function LetsCook.getIngredientsAroundPlayer(allFoodList, allVesselList, allTools)
-  -- get player inv
-  local player = getPlayer()
-  local container = player:getInventory()
-  LetsCook.searchForItems(container, allFoodList, allVesselList, allTools)
-  
-  local roomDef = player:getCurrentRoomDef()
-  if roomDef == nil then
-    print("getIngredientsAroundPlayer roomDef is nil")
-  end
-  -- Get all containers around the player
-  local playerSq = player:getCurrentSquare()
-  local squares = {
-    playerSq,
-    getSquare(playerSq:getX() - 1, playerSq:getY() - 1, playerSq:getZ()),
-    getSquare(playerSq:getX() + 0, playerSq:getY() - 1, playerSq:getZ()),
-    getSquare(playerSq:getX() + 1, playerSq:getY() - 1, playerSq:getZ()),
-    getSquare(playerSq:getX() - 1, playerSq:getY() + 0, playerSq:getZ()),
-    getSquare(playerSq:getX() + 1, playerSq:getY() + 0, playerSq:getZ()),
-    getSquare(playerSq:getX() - 1, playerSq:getY() + 1, playerSq:getZ()),
-    getSquare(playerSq:getX() + 0, playerSq:getY() + 1, playerSq:getZ()),
-    getSquare(playerSq:getX() + 1, playerSq:getY() + 1, playerSq:getZ())
-  }
-  -- to do, check if sqaure is in the same room as the player, what about out side?
-  for k,v in pairs(squares) do
-    local square = v
-    if roomDef and roomDef:getID() ~= square:getRoomID() then
-      print(k .. ": Removing square outside the room: roomDef ID = " .. roomDef:getID() .. " square room ID = " .. square:getRoomID())
-      squares[k] = nil
-    end    
-  end
-  
-  for _, v in pairs(squares) do
-    local square = v
-    local objects = square:getObjects()
-    local oSize = objects:size()
-    for i = 0, oSize - 1 do
-      local object = objects:get(i)
-      if object and object:getContainerCount() > 0 and object:getContainer() and object:getContainer():getItems() and object:getContainer():getItems():size() > 0 then
-        --we have a container, get items
-        LetsCook.searchForItems(object:getContainer(), allFoodList, allVesselList, allTools)
-      end
-    end
-  end  
-end
-
-function LetsCook.updateEvolvedRecipesTable(baseType) 
-  if LetsCook.ALL_EVOLVED_RECIPES[baseType] then
-    return
-  end
-  print("Checking evo rec for " .. baseType)
-  for k,v in pairs(LetsCook.ALL_EVOLVED_RECIPES['Rest']) do
-    print(k .. ": " .. v:getName() .. ", " .. v:getBaseItem())
-    if baseType == v:getBaseItem() then
-      LetsCook.ALL_EVOLVED_RECIPES[baseType] = v
-      LetsCook.ALL_EVOLVED_RECIPES['Rest'][k] = nil
-      print("Found evo rec for " .. baseType)
+function LestCook.addToFavEvoRecipes(evo)
+  for _, v in pairs(LetsCook.favEvoRecipes) do
+    if v == evo then
+      if LetsCook.LOG.debug then print("Skipping already added evo to fav list", tostring(evo:getOriginalname())) end
       return
-    end    
-  end 
-  print("Found NO evo rec for " .. baseType)
-end
-
-function LetsCook.getRecipeFromResultingItems(itemType)
-  local evoRec = RecipeManager.getAllEvolvedRecipes()
-  for _, v in pairs(evoRec) do
-    if itemType == v:getResultItem() then
-      return v
     end
   end
-  return nil
+  if LetsCook.LOG.debug then print("Adding evo to fav list", tostring(evo:getOriginalname())) end
+  table.insert(LetsCook.favEvoRecipes, evo)
 end
 
-function LetsCook.needsWater(evo, vessel)
-  return not LetsCook.startsWith(vessel:getType(), evo:getBaseItem())
+function LestCook.removeFromFavEvoRecipes(evo)
+  for i = 1, #LetsCook.favEvoRecipes do
+    if LetsCook.favEvoRecipes[i] == evo then
+      if LetsCook.LOG.debug then print("Removing evo from fav list", tostring(evo:getOriginalname())) end
+      LetsCook.favEvoRecipes[i] = nil
+      return
+    end
+  end 
+  if LetsCook.LOG.debug then print("Evo was not in fav list", tostring(evo:getOriginalname())) end
 end
 
-local function onExample(player)
-	player:Say("This is a custom slice!")
+function LestCook.isInFavEvoRecipes(evo)
+  for i = 1, #LetsCook.favEvoRecipes do
+    if LetsCook.favEvoRecipes[i] == evo then
+      return true
+    end
+  end 
+  return false
 end
 
-local function exampleFunction(menu, player)
-	menu:addSlice("What's This?", getTexture("media/ui/emotes/shrug.png"), onExample, player)
-end
-
-LetsCook.showCookingUI = function(item)
-  print("showCookingUI: ", tostring(item:getType()))  
-  -- Get all food and vessel items
-  local allFoodItems = {}
-  local allVesselItems = {}
-  local allTools = {}
-  local availableRecipes = {}
-  LetsCook.getIngredientsAroundPlayer(allFoodItems, allVesselItems, allTools)
-  for _, vesselList in pairs(allVesselItems) do
-    for k = 0, LetsCook.ALL_EVOLVED_RECIPES['Rest']:size() - 1 do
-      local evo = LetsCook.ALL_EVOLVED_RECIPES['Rest']:get(k) 
-      print(k .. ": " .. evo:getName() .. ", " .. evo:getBaseItem())
-      for _, vessel in pairs(vesselList) do
-        if LetsCook.checkCombs(vessel, evo) then
-          if availableRecipes[evo:getName()] == nil then
-            availableRecipes[evo:getName()] = {}
+function LestCook.hasDeeperRecipesFor(vesselList, strBaseItem)
+  local output = "\nhasDeeperRecipeFor: " .. strBaseItem
+  for k, v in pairs(LetsCook.ALL_FOOD_RECIPES) do
+    if LetsCook.LOG.debug then output = output .. "\nRecipe result: " .. tostring(v:getResult():getType()) end
+    if v:getResult() and getResult():getType() == strBaseItem then
+      local sourceList = v:getSource()
+      local size = sourceList:size()
+      for i = 0, size - 1 do
+        local source = sourceList:get(i)
+        local items = source:getItems()
+        local iSize = items:size()
+        for j = 0, iSize - 1 do
+          local item = items:get(j)
+          if LetsCook.LOG.debug then output = output .. "\nSee if source item (" .. tostring(item) .. ") is in vesselList" end
+          if LCFindItems.isInList(vesselList, item) then
+            if LetsCook.LOG.debug then print(output .. "\nGot it") end
+            return true
           end
-          table.insert(availableRecipes[evo:getName()], {evo, vessel, LetsCook.needsWater(evo, vessel)})
-          print("Found one")
-          -- add evo rec to list of current evo rec
-          -- table.insert(workingVessels, {item, v})
         end
-      end      
+      end
     end
   end
-  
-  print("availableRecipes")
-  for k, v in pairs(availableRecipes) do
-    print(k .. ": " .. v[1]:getName() .. ", " .. v[1]:getBaseItem() .. ", " .. v[2]:getName() .. ", " .. tostring(v[3]))
-  end  
-  
-  print("allVesselItems")
-  for k, v in pairs(allVesselItems) do
-    print(k .. ": " .. tostring(v[1][2]:getName()))
-  end  
-  
-  print("allFoodItems")
-  for k, v in pairs(allFoodItems) do
-    print(k .. ": " .. tostring(v[1][2]:getName()))
-  end  
-  
-  print("allTools")
-  for k, v in pairs(allTools) do
-    print(k .. ": " .. tostring(v[1][2]:getName()))
-  end 
+  if LetsCook.LOG.debug then print(output .. "\nNo luck") end
+  return false
+end
 
-  LetsCookMenuAPI.registerSlice("example", exampleFunction)
-end 
-
-function LetsCook.splitString(inputstr, sep)
-  if sep == nil then
-    sep = "%s"
-  end
-  local t={}
-    for str in string.gmatch(inputstr, "([^" .. sep .. "]+)") do
-      table.insert(t, str)
+-- TODO, rather use getHungerChange?
+function LestCook.countItems(foodList, possibleItems)
+  --foodList InventoryItems
+  --possibleItems ItemRecipe
+  local count = 0
+  local size = possibleItems:size()
+  for i = 0, size - 1 do
+    local pItem = possibleItems:get(i)
+    local pCount = 0
+    if foodList[pItem:getName()] then
+      pCount = #foodList[pItem:getName()]
     end
-  return t
+    count = count + pCount
+  end
+  
+  return count
 end
 
--- Get the replacement type for WaterSource key in the map
--- Can return nil
-function LetsCook.getTypeFromReplaceTypesMap(map)
-  if map and map:containsKey("WaterSource") then
-    local value = LetsCook.splitString(map:get("WaterSource"), ".")
-    if #value >= 2 then
-      return value[2]
-    else
-      print("Value is not what was expected: ", tostring(map:get("WaterSource")))
+function LestCook.sortEvos(foodList, vesselList, toolList)
+  local function byValue(first, second)
+    -- A) is evo in fav list (even if it can't be made?)
+    -- B) check if we have the base item (or pre base item) near
+    -- C) then count the available ing for first and second
+    local output = "***"
+    if LetsCook.LOG.debug then
+      output = output .. "\n1st = " .. first:getBaseItem() .. "[" .. tostring(LestCook.isInFavEvoRecipes(first)) .. ", " .. tostring(LCFindItems.isInList(vesselList, first:getBaseItem())) .. ", " .. LCFindItems.getRecipesFor(first:getBaseItem()) .. "]"
+      output = output .. "\n2nd = " .. second:getBaseItem() .. "[" .. tostring(LestCook.isInFavEvoRecipes(second)) .. ", " .. tostring(LCFindItems.isInList(vesselList, second:getBaseItem())) .. ", " .. LCFindItems.getRecipesFor(second:getBaseItem()) .. "]"
     end
-  end  
-  return nil
-end
-
-function LetsCook.startsWith(needle, haystack)
-  if needle == nil or haystack == nil then
-    return false
-  end
- return string.sub(haystack, 1, string.len(needle)) == needle
-end
-
--- Check if the item's type or replacement type is or is the start of the evolved recipe's base item (str) name
--- Truem we found a match, false we didn't
-function LetsCook.checkCombs(item, evoRec)
-  return LetsCook.startsWith(item:getType(), evoRec:getBaseItem()) or LetsCook.startsWith(LetsCook.getTypeFromReplaceTypesMap(item:getReplaceTypesMap()), evoRec:getBaseItem()) 
-end
-
-function LetsCook.sortOnEvoRecName(a, b)
-  return a[2]:getName() < b[2]:getName()
-end
-
--- Add let's cook menu item if at least one vessel is in an inventory context menu
--- For now, a vessel is where the item's type match a evolved recipe's base item (type)
--- Also, check if the replacment type, when adding water, will produce a type that match a evolved recipe's base item (type)
--- Stop at first find
-LetsCook.letsCookMenu = function(playerID, context, items)
-  --addCookingMenuItem(playerID, context, items)
-  if not context:isReallyVisible() then
-    return
-  end
-  print("***### Fill ###***")
-  --fill(playerID, context, items)  
-  --local workingVessels = {}
-  local foundItem = nil
-  items = ISInventoryPane.getActualItems(items)
-  for _, item in pairs(items) do
-    for k = 0, LetsCook.ALL_EVOLVED_RECIPES['Rest']:size() - 1 do
-      local v = LetsCook.ALL_EVOLVED_RECIPES['Rest']:get(k) 
-      print(k .. ": " .. v:getName() .. ", " .. v:getBaseItem())
-      if LetsCook.checkCombs(item, v) then
-        print("Found one")
-        -- add evo rec to list of current evo rec
-        foundItem = item
-        break
-        --table.insert(workingVessels, {item, v})
-      end      
+    if (LestCook.isInFavEvoRecipes(first) and LestCook.isInFavEvoRecipes(second)) or (not LestCook.isInFavEvoRecipes(first) and not LestCook.isInFavEvoRecipes(second)) then
+      local firstHasBaseItem = LCFindItems.isInList(vesselList, first:getBaseItem())
+      if not firstHasBaseItem then -- check if we can make it
+        firstHasBaseItem = LestCook.hasDeeperRecipesFor(vesselList, first:getBaseItem())
+      end
+      local secondHasBaseItem = LCFindItems.isInList(vesselList, second:getBaseItem())
+      if not secondHasBaseItem then -- check if we can make it
+        secondHasBaseItem = LestCook.hasDeeperRecipesFor(vesselList, second:getBaseItem())
+      end
+      if firstHasBaseItem and secondHasBaseItem then
+        local ret = LestCook.countItems(foodList, first:getPossibleItems()) > LestCook.countItems(foodList, second:getPossibleItems())
+        if LetsCook.LOG.debug then
+          output = output .. "\nResult(A) = " .. tostring(ret)
+          print(output)
+        end
+        return ret
+      else
+        local ret = first:getBaseItem() < second:getBaseItem()
+        if LetsCook.LOG.debug then
+          output = output .. "\nResult(B) = " .. tostring(ret)
+          print(output)
+        end
+        return ret
+      end
     end
+    local ret = LestCook.isInFavEvoRecipes(first) and not LestCook.isInFavEvoRecipes(second)
+    if LetsCook.LOG.debug then
+      output = output .. "\nResult(C) = " .. tostring(ret)
+      print(output)
+    end
+    return ret
   end
-  --table.sort(workingVessels, sortOnEvoRecName)
-  --for k, v in pairs(workingVessels) do
-  --  print(k .. ": " .. v[1]:getName() .. ", " .. v[2]:getName())
-  --end
-  if foundItem ~= nil then
-    context:addOption(getText("ContextMenu_LetsCookMenu"), foundItem, LetsCook.showCookingUI)
-  end
-  print("***###___###***")
+  
+  table.sort(LetsCook.ALL_EVOLVED_RECIPES, byValue)
 end
-
-Events.OnFillInventoryObjectContextMenu.Add(LetsCook.letsCookMenu)
-
--- To do
---local function onKeyPressed(keynum)
---    if not MainScreen.instance or not MainScreen.instance.inGame or MainScreen.instance:getIsVisible() then return; end
---    local playerObj = getSpecificPlayer(0);
---    if not playerObj then return; end
---    if playerObj:getVehicle() then return; end
---
---    if playerObj ~= nil then
---        if keynum == KEY_BM.key then
---            ISBuildingMenuUI:toggleBuildingMenuUI(playerObj);
---        end
---    end
---end
---Events.OnKeyPressed.Add(onKeyPressed)
-]]
-
 
 -- Created by shadowhunter100 aka "Cows with Guns" on Steam for Project Zomboid Modding
 -- 

@@ -97,8 +97,7 @@ function LCFindItems.debugPrintFVTLists(foodList, vesselList, toolList)
   return output
 end
 
-function LCFindItems.findAll(foodList, vesselList, toolList)
-  
+function LCFindItems.findAll(foodList, vesselList, toolList)  
   -- Player's inv
   local player = getPlayer()
   LCFindItems.searchForItems(player:getInventory(), foodList, vesselList, toolList)
@@ -135,3 +134,8 @@ function LCFindItems.findAll(foodList, vesselList, toolList)
   end
   if LCFindItems.LOG.debug then print(LCFindItems.debugPrintFVTLists(foodList, vesselList, toolList)) end
 end
+
+function LCFindItems.isInList(list, strBaseItem)
+  return list[strBaseItem] ~= nil
+end
+
