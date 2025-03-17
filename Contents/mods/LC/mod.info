@@ -2,4 +2,4 @@ name=Let's Cook
 id=3230621770
 description=Alternative cooking menu.
 poster=poster.png
-require=UIAPI
+version=1.01

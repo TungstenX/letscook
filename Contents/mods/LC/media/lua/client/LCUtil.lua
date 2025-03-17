@@ -16,6 +16,67 @@
 
 LCUtil = LCUtil or {}
 
+function LCUtil.startsWith(needle, haystack)
+  if needle == nil or haystack == nil then
+    return false
+  end
+ return string.sub(haystack, 1, string.len(needle)) == needle
+end
+
+function LCUtil.endsWith(needle, haystack)
+  if needle == nil or haystack == nil then
+    return false
+  end
+ return string.sub(haystack, string.len(haystack) - string.len(needle) + 1) == needle
+end
+
+function LCUtil.contains(needle, array)
+  for _, v in pairs(array) do
+    if v == needle then
+      return true
+    end
+  end
+  return false
+end
+
+function LCUtil.containsItem(fullType, inventoryItemList)
+  for _, inventoryItem in pairs(inventoryItemList) do
+    if inventoryItem:getFullType() == fullType then
+      return true
+    end
+  end
+  return false
+end
+
+function LCUtil.removeFirstItem(fullType, inventoryItemList)
+  for index, inventoryItem in pairs(inventoryItemList) do
+    if inventoryItem:getFullType() == fullType then
+      table.remove(inventoryItemList, index)
+      return inventoryItem
+    end
+  end
+  return nil
+end
+
+function LCUtil.getFirstItem(fullType, inventoryItemList)
+  for index, inventoryItem in pairs(inventoryItemList) do
+    if inventoryItem:getFullType() == fullType then
+      return inventoryItem
+    end
+  end
+  return nil
+end
+
+function LCUtil.count(needle, array)
+  local count = 0
+  for _, v in pairs(array) do
+    if v == needle then
+      count = count + 1
+    end
+  end
+  return count
+end
+
 function LCUtil.getValidModData()
 	local modData = ModData.getOrCreate("LetsCook")
 	if modData.favEvoRecipes == nil then
@@ -24,6 +85,7 @@ function LCUtil.getValidModData()
 	return modData
 end
 
+--TODO: Remove this function
 function LCUtil.getTextSize(text, width, font, zoom)
 	if not zoom then zoom = 1 end
 	local brokenText = {}
@@ -46,7 +108,7 @@ function LCUtil.getTextSize(text, width, font, zoom)
 	local fontSize = getTextManager():MeasureStringY(font, text) * zoom
 	local margin = fontSize / 4
 	local finalText = ""
-	for key,value in pairs(brokenText) do
+	for _, value in pairs(brokenText) do
 		local lineBreak = "\n"
 		if finalText == "" then 
 			lineBreak = "" 

@@ -1,8 +1,0 @@
-UI_EN = {
-  UI_LC_Title = "Let's Cook",
-  UI_LC_Button_AddNew = "TBD1",
-  UI_LC_Button_AddNew_Tooltip = "TBD1.1",
-  UI_LC_Button_CheckOff = "TBD2",
-  UI_LC_Button_CheckOff_Tooltip = "TBD2.1",
-  
-}

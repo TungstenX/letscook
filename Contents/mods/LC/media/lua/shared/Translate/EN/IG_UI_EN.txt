@@ -1,0 +1,7 @@
+IGUI_EN = {
+  IGUI_LC_Slice_Next_Ingredients    = "Next ingredients",
+  IGUI_LC_Slice_No_Next_Ingredients = "Next ingredients",
+  IGUI_LC_Slice_Prev_Ingredients    = "Previous ingredients",
+  IGUI_LC_Slice_No_Prev_Ingredients = "No Previous ingredients",
+  IGUI_LC_Slice_Next_Step           = "Start preparations",
+}

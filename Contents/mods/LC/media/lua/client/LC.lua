@@ -15,10 +15,11 @@
 │ Lets Cook │
 └───────────┘
 ]]
+
 require "LCUtil"
 require "LCMenu"
-require "LCFindItems"
-
+--[[require "LCFindItems"
+]]
 LetsCook = LetsCook or {}
 LetsCook.LOG = LetsCook.LOG or {}
 LetsCook.LOG.debug = getCore():getDebug() or false
@@ -27,6 +28,7 @@ LetsCook.LOG.trace = false
 LetsCook.ALL_FOOD_RECIPES = LetsCook.ALL_FOOD_RECIPES or {}
 LetsCook.ALL_EVOLVED_RECIPES = LetsCook.ALL_EVOLVED_RECIPES or {}
 LetsCook.favEvoRecipes = {}
+
 
 function LetsCook.debugPrintItemRecipe(itemRecipe)
   local output = "\n    Item recipe (" .. tostring(itemRecipe:getName()) .. ")"
@@ -64,7 +66,7 @@ function LetsCook.init()
   local size = getAllRecipes():size()
   for i = 0, size - 1 do
     local recipe = getAllRecipes():get(i)
-    if recipe:getCategory() == 'Cooking' and not recipe:isHidden() and (not recipe:needToBeLearn() or (player and player:isRecipeKnown(recipe))) then
+    if (recipe:getCategory() == 'Cooking' or LCUtil.startsWith("Open Canned", recipe:getName())) and not recipe:isHidden() and (not recipe:needToBeLearn() or (player and player:isRecipeKnown(recipe))) then
       if LetsCook.LOG.debug then print("Adding recipe from list: " .. tostring(recipe:getName())) end
       table.insert(LetsCook.ALL_FOOD_RECIPES, recipe)
     end
@@ -81,7 +83,7 @@ function LetsCook.init()
   end  
 end
 Events.OnGameStart.Add(LetsCook.init)
-
+--[[
 -- To preserve UI position between sessions --
 function LetsCook.saveModData()
 	local modData = LCUtil.getValidModData()
@@ -515,3 +517,4 @@ LetsCook.KEY_MAP = {
   [254] = "",
   [255] = "",
 }
+]]

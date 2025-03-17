@@ -1,0 +1,6 @@
+UI_EN = {
+  UI_LC_Title = "Let's Cook",
+  UI_optionscreen_binding_LC = "Let's Cook",
+  UI_optionscreen_binding_OpenMenu = "Open Menu",
+  
+}
