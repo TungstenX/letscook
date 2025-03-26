@@ -6,15 +6,17 @@
 │  _/      _/    _/  _/    _/_/  _/    _/        _/      _/      _/        _/    _/_/    _/  _/      │   
 │ _/        _/_/    _/      _/    _/_/_/  _/_/_/        _/      _/_/_/_/  _/      _/  _/      _/     │   
 ├────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ © Copyright 2024                                                                                   │ 
+│ © Copyright 2025                                                                                   │ 
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────┐
 │ Lets Cook Menu │
 └────────────────┘
+Version: 1.03
 ]]
--- TODO: Check if pot is full (can do evo recipe)
--- TODO: Change number of items when using resultItem for baseItem
+require "ISUI/ISInventoryPaneContextMenu"
+require "TimedActions/ISAddItemInRecipe"
+-- TODO: Check if pot is full of water (can do evo recipe)
 -- TODO: click hold to increase amount
 -- TODO: ModOptions
 -- TODO: Search if there is a build in function to get all itemcontainers around player
@@ -31,60 +33,74 @@ LCMenu.toolList = {}
 LCMenu.currentIngredients = LCMenu.currentIngredients or {}
 LCMenu.ingredientShown = LCMenu.ingredientShown or {}
 
-function LCMenu.mixIngredients(playerObj, evolvedRecipe)  
-  local returnToContainer = {};
-  local baseItemFullType = evolvedRecipe:getResultItem()
-  if not playerObj:getInventory():contains(baseItemFullType) then
-    baseItemFullType = evolvedRecipe:getBaseItem()
-  end
-  local baseItem = playerObj:getInventory():getItemFromType(baseItemFullType)
+--[[
+* Loop through selected items
+* If selected item is a can, then open it and add the open can to the selected item list
+* Do the vanilla add ingredients to base (or result) item per loop
+* @param IsoPlayer playerObj         - The player object
+* @param EvolvedRecipe evolvedRecipe - The evolved recipe object
+* @param InventoryItem baseItem      - The evolved recipe's base item
+]]
+function LCMenu.mixIngredients(playerObj, evolvedRecipe, baseItem)  
+  local returnToContainer = {}
   
   for _, inventoryItem in pairs(LCMenu.currentIngredients) do
     if inventoryItem then
-      local name = inventoryItem:getType()
-      if not LCUtil.endsWith("Open", name) and (LCUtil.startsWith("Canned", name) or LCUtil.startsWith("Tinned", name) or LCUtil.startsWith("TunaTin", name)) then
-        for _, recipe in pairs(LetsCook.ALL_FOOD_RECIPES) do          
-          if LCUtil.startsWith("Canned", name) then
-            name = string.sub(name, string.len("Canned") + 1)
-          end
+      local md = inventoryItem:getModData()
+      if not md.lcIgnore then
+        local name = inventoryItem:getType()
+        if not LCUtil.endsWith("Open", name) and (LCUtil.startsWith("Canned", name) or LCUtil.startsWith("Tinned", name) or LCUtil.startsWith("TunaTin", name)) then
+          for _, recipe in pairs(LetsCook.ALL_FOOD_RECIPES) do          
+            if LCUtil.startsWith("Canned", name) then
+              name = string.sub(name, string.len("Canned") + 1)
+            end
           
-          if LCUtil.startsWith("Tinned", name) then
-            name = string.sub(name, string.len("Tinned") + 1)
-          end
+            if LCUtil.startsWith("Tinned", name) then
+              name = string.sub(name, string.len("Tinned") + 1)
+            end
           
-          if name == "TunaTin" then
-            name = "Tuna"
-          end
+            if name == "TunaTin" then
+              name = "Tuna"
+            end
         
-          if LCUtil.endsWith("2", name) then
-            name = string.sub(name, 1, string.len(name) - 1)
+            if LCUtil.endsWith("2", name) then
+              name = string.sub(name, 1, string.len(name) - 1)
+            end
+            if recipe:getOriginalname() == "Open Canned " .. name then
+              LCMenu.openCan(inventoryItem, recipe, playerObj, evolvedRecipe)
+            end
           end
-          if recipe:getOriginalname() == "Open Canned " .. name then
-            LCMenu.openCan(inventoryItem, recipe, playerObj, evolvedRecipe)
-            return
+        else
+          if not playerObj:getInventory():contains(inventoryItem) then -- take the item if it's not in our inventory
+            ISTimedActionQueue.add(ISInventoryTransferAction:new(playerObj, inventoryItem, inventoryItem:getContainer(), playerObj:getInventory(), nil))
+            table.insert(returnToContainer, inventoryItem)
           end
+          if not playerObj:getInventory():contains(baseItem) then -- take the base item if it's not in our inventory
+            ISTimedActionQueue.add(ISInventoryTransferAction:new(playerObj, baseItem, baseItem:getContainer(), playerObj:getInventory(), nil))
+            table.insert(returnToContainer, baseItem)
+          end
+          LCMenu.currentBaseItem = baseItem
+          ISTimedActionQueue.add(ISAddItemInRecipe:new(playerObj, evolvedRecipe, baseItem, inventoryItem, (70 - playerObj:getPerkLevel(Perks.Cooking))))
         end
-      else
-        if not playerObj:getInventory():contains(inventoryItem) then -- take the item if it's not in our inventory
-          ISTimedActionQueue.add(ISInventoryTransferAction:new(playerObj, inventoryItem, inventoryItem:getContainer(), playerObj:getInventory(), nil))
-          table.insert(returnToContainer, inventoryItem)
-        end
-        if not playerObj:getInventory():contains(baseItem) then -- take the base item if it's not in our inventory
-          ISTimedActionQueue.add(ISInventoryTransferAction:new(playerObj, baseItem, baseItem:getContainer(), playerObj:getInventory(), nil))
-          table.insert(returnToContainer, button.baseItem)
-        end
-        ISTimedActionQueue.add(ISAddItemInRecipe:new(playerObj, evolvedRecipe, baseItem, inventoryItem, (70 - playerObj:getPerkLevel(Perks.Cooking))))
+      elseif LCMenu.LOG.debug then
+        print("mixIngredients: inventory item is nil")
       end
-    elseif LCMenu.LOG.debug then
-      print("mixIngredients: inventory item is nil")
     end
   end
+  -- release memory early
+  LCMenu.currentIngredients = {}
 end
 
+--[[
+* Call the Timed Action to open can.
+* @param InventoryItem selectedItem  - The can to be opened
+* @param Recipe recipe               - The recipe to open that can
+* @param IsoPlayer playerObj         - The player object
+* @param EvolvedRecipe evolvedRecipe - The evolved recipe object
+]]
 function LCMenu.openCan(selectedItem, recipe, playerObj, evolvedRecipe)
 	local containers = ISInventoryPaneContextMenu.getContainers(playerObj)
 	local container = selectedItem:getContainer()
-  local selectedItemContainer = selectedItem:getContainer()
 	if not recipe:isCanBeDoneFromFloor() then
 		container = playerObj:getInventory()
 	end
@@ -119,12 +135,20 @@ function LCMenu.openCan(selectedItem, recipe, playerObj, evolvedRecipe)
   ISCraftingUI.ReturnItemsToOriginalContainer(playerObj, returnToContainer)
 end
 
+--[[
+* Finish up the can opening by adding the open can to the selected item list
+* @param ? completedAction              - [not used]
+* @param Recipe recipe                  - The recipe to open that can
+* @param IsoPlayer playerObj            - The player object
+* @param EvolvedRecipe evolvedRecipe    - The evolved recipe object
+* @param InventoryItem selectedItemType - The selected item
+]]
 function LCMenu.OnCraftComplete(completedAction, recipe, playerObj, evolvedRecipe, selectedItemType)  
-  for index, inventoryItem in pairs(LCMenu.currentIngredients) do
+  for k, inventoryItem in pairs(LCMenu.currentIngredients) do
     if inventoryItem then
       local itemFullType = inventoryItem:getFullType()
       if itemFullType == selectedItemType then
-        table.remove(LCMenu.currentIngredients)
+        table.remove(LCMenu.currentIngredients, k)
         break
       end
     elseif LCMenu.LOG.debug then
@@ -142,8 +166,12 @@ function LCMenu.OnCraftComplete(completedAction, recipe, playerObj, evolvedRecip
   LCMenu.mixIngredients(playerObj, evolvedRecipe)
 end
 
+--[[
+* Counting the ingredients and not the spices in LCMenu.currentIngredients array
+]]
 function LCMenu.countIngredientsOnly()
   local count = 0
+  if LCMenu.LOG.debug then print("countIngredientsOnly: " .. tostring(#LCMenu.currentIngredients)) end
   for _, inventoryItem in pairs(LCMenu.currentIngredients) do
     if not inventoryItem:isSpice() then
       count = count + 1
@@ -152,6 +180,11 @@ function LCMenu.countIngredientsOnly()
   return count
 end
 
+--[[
+* Taverse the supplied inventory (item container)
+* @param IsoPlayer playerObj         - The player object
+* @param ItemContainer itemContainer - The item container / inventory
+]]
 function LCMenu.taverseInventory(playerObj, itemContainer)
   if not instanceof(itemContainer, "ItemContainer") then
     if instanceof(itemContainer, "InventoryContainer") then
@@ -173,20 +206,23 @@ function LCMenu.taverseInventory(playerObj, itemContainer)
       local age = inventoryItem:getAge()
       local offAgeMax = inventoryItem:getOffAgeMax()
       if age < offAgeMax and cookingLvl > 6 then
-        --if LCMenu.LOG.debug then print("Adding: " .. inventoryItem:getName()) end
+        if LCMenu.LOG.debug then print("Adding: " .. inventoryItem:getName()) end
         table.insert(LCMenu.allIngredients, inventoryItem)
       end
     elseif inventoryItem and inventoryItem:IsInventoryContainer() then
-      LCMenu.taverseInventory(playerObj, inventoryItem)
+      LCMenu.taverseInventory(playerObj, inventoryItem, evorecipe)
     end
   end
 end
 
--- TODO: Search if there is a build in function to get all itemcontainers around player
+--[[
+* Get all food items from the player's inventory as well as the 3x3 cells around the player. (There might be a function already for this)
+* @param IsoPlayer playerObj - The player object
+]]
 function LCMenu.getAllIngredients(playerObj)
   LCMenu.allIngredients = {}
   local itemContainer = playerObj:getInventory()--:getAllCategory("Food")
-  LCMenu.taverseInventory(playerObj, itemContainer)
+  LCMenu.taverseInventory(playerObj, itemContainer, evorecipe)
   if LCMenu.LOG.debug then print("allIngredients size after player inventory(s) = " .. tostring(#LCMenu.allIngredients)) end
   
   local square = playerObj:getCurrentSquare()
@@ -224,6 +260,13 @@ function LCMenu.getAllIngredients(playerObj)
   if LCMenu.LOG.debug then print("allIngredients size after 3x3 squares inventory(s) = " .. tostring(#LCMenu.allIngredients)) end
 end
 
+--[[
+* Make freshness level based on age, offAge, offAgeMax
+* @param float age       - age (of the item)
+* @param float offAge    - days before item becomes stale
+* @param float offAgeMax - days before item becomes rotten
+* @return int - 0, 1, 2, 3 -> not set/don't use, rotten, stale, fresh
+]]
 local function getFreshLevel(age, offAge, offAgeMax)
   if age - offAge > 0 then
     return 3
@@ -236,18 +279,21 @@ local function getFreshLevel(age, offAge, offAgeMax)
 end
 
 --[[
-The rules:
-  1 Spice last, if both spice, then which one makes more happy
-  2 Fresh before canned and other stuff that will not go off
-      is fresh offAge < 1000000000
-  3 if both fresh then fresh level
-      fresh (3): Age - offAge > 0
-      stale (2):  Age - offAge < 0 and Age - offAgeMax > 0
-      rotten(1): Age - offAgeMax < 0
-  4 same fresh level then check hunger change (x -1) largest first
-  5 same hunger change (x -1) check Calories largest first
-  6 same Calorie then youngest first (<age)
-  7 else true
+* The rules:
+*   1 Spice last, if both spice, then which one makes more happy
+*   2 Fresh before canned and other stuff that will not go off
+*       is fresh offAge < 1000000000
+*   3 if both fresh then fresh level
+*       fresh (3): Age - offAge > 0
+*       stale (2):  Age - offAge < 0 and Age - offAgeMax > 0
+*       rotten(1): Age - offAgeMax < 0
+*   4 same fresh level then check hunger change (x -1) largest first
+*   5 same hunger change (x -1) check Calories largest first
+*   6 same Calorie then youngest first (<age)
+*   7 else true*
+* @parma InventoryItem leftInventoryItem  - the left inventory item
+* @parma InventoryItem rightInventoryItem - the right inventory item
+* @param boolean - true then left inventory item earlier in array, else the right one
 ]]
 function LCMenu.sortFreshFirst(leftInventoryItem, rightInventoryItem)
   local leftIsSpice  = leftInventoryItem:isSpice()
@@ -256,7 +302,7 @@ function LCMenu.sortFreshFirst(leftInventoryItem, rightInventoryItem)
   if leftIsSpice ~= rightIsSpice then
     return rightIsSpice
   elseif leftIsSpice then -- both spice leftIsSpice == rightIsSpice, which one more happy
-    return leftInventoryItem():getUnhappyChange() > rightInventoryItem:getUnhappyChange()
+    return leftInventoryItem:getUnhappyChange() > rightInventoryItem:getUnhappyChange()
   end
   -- 2
   local leftAge        = leftInventoryItem:getAge()
@@ -313,6 +359,12 @@ function LCMenu.sortFreshFirst(leftInventoryItem, rightInventoryItem)
   return true
 end
 
+--[[
+* Count the number of items in the supplied array and return true if there are more than 1 of these item full type in the array
+* @param string itemType - the full type of an item
+* @param array allInv    - an array of InventoryItem
+* @return boolean - true if there are more than 1 item in the array with the same full type as the supplied full type
+]]
 function hasEnough(itemType, allInv)
   local countCorrectItems = 0
   for _, inventoryItem in pairs(allInv) do
@@ -323,6 +375,12 @@ function hasEnough(itemType, allInv)
   return (countCorrectItems > 0)
 end
 
+--[[
+* Return the unopened full type of the supplied item if the supplied have tin openers is true and the supplied item's full type starts with Canned, Tinned or TunaTin and ends with Open. Or if the supplied item's full type is OpenBeans
+* @param InventoryItem itemRecipe - The item to check
+* @param boolean haveTinOpeners   - Does the player have a can opener
+* @return string - the supplied item's full type or the changed full type
+]]
 function makeFullType(itemRecipe, haveTinOpeners)
   local fullType = itemRecipe:getFullType()
   -- Process unopened cans as fullType
@@ -347,10 +405,21 @@ function makeFullType(itemRecipe, haveTinOpeners)
   return fullType
 end
 
+--[[
+* Format the supplied float
+* @param float f - the value to be formatted
+* @return string - formatted float
+]]
 local function formatFoodValue(f)
 	return string.format("%+.2f", f)
 end
 
+--[[
+* Make the display name for the supplied item
+* @param InventoryItem inventoryItem - The supplied item
+* @param int noOfIng                 - The number of ingriedents / items already added
+* @return string - The string to be used as a display name
+]]
 local function makeDisplayName(inventoryItem, noOfIng)
   local displayName = inventoryItem:getDisplayName()
   
@@ -384,7 +453,16 @@ local function makeDisplayName(inventoryItem, noOfIng)
   return displayName
 end
 
-function LCMenu.addIngredients(playerObj, evolvedRecipe, inventoryItem, startAt)
+--[[
+* Add ingredient(s) to the LCMenu.currentIngredients array and create a new menu to display
+* @param IsoPlayer playerObj            - The player object
+* @param EvolvedRecipe evolvedRecipe    - The evolved recipe object
+* @param InventoryItem evoItem          - The base/result item
+* @param InventoryItem inventoryItem    - The selected item
+* @param int startAt                    - Start index for paging
+]]
+function LCMenu.addIngredients(playerObj, evolvedRecipe, evoItem, inventoryItem, startAt)
+  if LCMenu.LOG.debug then print("addIngredients: " .. tostring(#LCMenu.currentIngredients)) end
   if inventoryItem ~= nil then
     table.insert(LCMenu.currentIngredients, inventoryItem)
     LCUtil.removeFirstItem(inventoryItem:getFullType(), LCMenu.allIngredients)
@@ -395,6 +473,7 @@ function LCMenu.addIngredients(playerObj, evolvedRecipe, inventoryItem, startAt)
   
   LCMenu.ingredientShown = {}  
   local ingredientsOnly = LCMenu.countIngredientsOnly()
+  
   local canAddIngredient = ingredientsOnly < evolvedRecipe:getMaxItems()
   local itemContainer = playerObj:getInventory() -- for can/tin opener
   
@@ -407,20 +486,18 @@ function LCMenu.addIngredients(playerObj, evolvedRecipe, inventoryItem, startAt)
   
   -- Run through the ingredients list first, rather than sorting the pi entries as well
   for _, inventoryItem in pairs(LCMenu.allIngredients) do
-    local fullTypeInventoryItem = inventoryItem:getFullType()
+    local fullTypeInventoryItem = inventoryItem:getFullType()    
     if not LCMenu.ingredientShown[fullTypeInventoryItem] then
-      LCMenu.ingredientShown[fullTypeInventoryItem] = true
-      
+      LCMenu.ingredientShown[fullTypeInventoryItem] = true      
       local spice = inventoryItem:isSpice()
-      local used = LCUtil.contains(fullTypeInventoryItem, LCMenu.currentIngredients)
-      local show = (not canAddIngredient and spice and not used) or (canAddIngredient and not spice) or (canAddIngredient and spice and not used)
-      --local hasEnough = hasEnough(fullType, LCMenu.allIngredients) -- ?
+      local used = LCUtil.containsFullType(fullTypeInventoryItem, LCMenu.currentIngredients)
+      local show = (not canAddIngredient and spice and not used) or (canAddIngredient and not spice) or (canAddIngredient and spice and not used)      
       if show then 
         for i = 0, size - 1 do
           local itemRecipe = pi:get(i)
-          local fullTypeItemRecipe = makeFullType(itemRecipe, haveTinOpeners)
-          if fullTypeItemRecipe == fullTypeInventoryItem then
-            if LCMenu.LOG.debug then print("addIngredients selecting item: " .. tostring(inventoryItem:getFullType())) end
+          local fullTypeItemRecipe = makeFullType(itemRecipe, haveTinOpeners)          
+          if fullTypeItemRecipe == fullTypeInventoryItem or itemRecipe:getFullType() == fullTypeInventoryItem then
+            if LCMenu.LOG.debug then print("addIngredients selecting item full type: " .. tostring(fullTypeInventoryItem)) end
             table.insert(ingredientsToUse, inventoryItem)
           end
         end
@@ -442,42 +519,43 @@ function LCMenu.addIngredients(playerObj, evolvedRecipe, inventoryItem, startAt)
     minTries = minTries - 1
     local tex = inventoryItem:getTexture()
     
-    local noOfIng = LCUtil.count(inventoryItem:getFullType(), LCMenu.currentIngredients)
+    local noOfIng = LCUtil.count(inventoryItem, LCMenu.currentIngredients)
     
     local displayName = makeDisplayName(inventoryItem, noOfIng)
       
-    menu:addSlice(displayName, tex, LCMenu.addIngredients, playerObj, evolvedRecipe, inventoryItem, startAt)
+    menu:addSlice(displayName, tex, LCMenu.addIngredients, playerObj, evolvedRecipe, evoItem, inventoryItem, startAt)
   end  
   
   if (i <= size) then
     local tex = getTexture("media/ui/Moodle_internal_plus_green.png")
-    menu:addSlice(getText("IGUI_LC_Slice_Next_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, nil, startAt + intervalStartAt)
+    menu:addSlice(getText("IGUI_LC_Slice_Next_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, evoItem, nil, startAt + intervalStartAt)
   else
     local tex = getTexture("media/ui/Moodle_internal_plus_red.png")
-    menu:addSlice(getText("IGUI_LC_Slice_No_Next_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, nil, startAt)
+    menu:addSlice(getText("IGUI_LC_Slice_No_Next_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, evoItem, nil, startAt)
   end
   if (startAt > 1) then
     local tex = getTexture("media/ui/Moodle_internal_minus_green.png")
-    menu:addSlice(getText("IGUI_LC_Slice_Prev_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, nil, startAt - intervalStartAt)
+    menu:addSlice(getText("IGUI_LC_Slice_Prev_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, evoItem, nil, startAt - intervalStartAt)
   else 
     local tex = getTexture("media/ui/Moodle_internal_minus_red.png")
-    menu:addSlice(getText("IGUI_LC_Slice_No_Prev_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, nil, startAt)
+    menu:addSlice(getText("IGUI_LC_Slice_No_Prev_Ingredients"), tex, LCMenu.addIngredients, playerObj, evolvedRecipe, evoItem, nil, startAt)
   end
   
-  local nextStep = getText("IGUI_LC_Slice_Next_Step") .. " [" .. tostring(ingredientsOnly) .. "/" .. tostring(evolvedRecipe:getMaxItems()) .. "]"
-  local evoBaseFullType = evolvedRecipe:getResultItem()
-  if not playerObj:getInventory():contains(evoBaseFullType) then
-    evoBaseFullType = evolvedRecipe:getBaseItem()
-  end
+  local nextStep = getText("IGUI_LC_Slice_Next_Step") .. " [" .. tostring(ingredientsOnly or "0") .. "/" .. tostring(evolvedRecipe:getMaxItems()) .. "]"
+    
   if ingredientsOnly == 0 then
-    LCMenu.addEvoSlice(menu, evoBaseFullType, playerObj, LCMenu.addIngredients, nextStep, evolvedRecipe)
+    LCMenu.addEvoSlice(menu, evoItem, playerObj, LCMenu.addIngredients, nextStep, evolvedRecipe)
   else
-    LCMenu.addEvoSlice(menu, evoBaseFullType, playerObj, LCMenu.mixIngredients, nextStep, evolvedRecipe)
+    LCMenu.addEvoSlice(menu, evoItem, playerObj, LCMenu.mixIngredients, nextStep, evolvedRecipe)
   end
   
   LCMenu.menuEnd(menu)
 end
 
+--[[
+* Boiler plate for making a radial menu
+* @param IsoPlayer playerObj - The player object
+]]
 function LCMenu.menuStart(playerObj)
   local isPaused = UIManager.getSpeedControls() and UIManager.getSpeedControls():getCurrentGameSpeed() == 0
 	if isPaused then return nil end
@@ -494,17 +572,32 @@ function LCMenu.menuStart(playerObj)
   return menu
 end
 
+--[[
+* Boiler plate for finishing up a radial menu
+* @param ? menu - The radial menu object
+]]
 function LCMenu.menuEnd(menu)
 	menu:center()
 	menu:addToUIManager()
 end
 
-function LCMenu.addEvoSlice(menu, fullType, playerObj, func, description, data)
-  local inventoryItem = InventoryItemFactory.CreateItem(fullType)
+--[[
+* Add a slice to the radial menu
+* @param ? menu                         - The radial menu object
+* @param InventoryItem inventoryItem    - The selected item
+* @param IsoPlayer playerObj            - The player object
+* @param lua function func              - The function to call when menu slice is clicked
+* @param string description             - The description
+* @param lua table data                 - Extra data    
+]]
+function LCMenu.addEvoSlice(menu, inventoryItem, playerObj, func, description, data)
   local tex = inventoryItem:getTexture()
-  menu:addSlice(description, tex, func, playerObj, data)
+  menu:addSlice(description, tex, func, playerObj, data, inventoryItem)
 end
 
+--[[
+* Create the radial menu
+]]
 function LCMenu.create()
   local playerObj = getPlayer()
   local menu = LCMenu.menuStart(playerObj)
@@ -519,10 +612,15 @@ function LCMenu.create()
   for _, evolvedRecipe in pairs(LetsCook.ALL_EVOLVED_RECIPES) do
     if itemContainer then
       --Frist check half made stuff
+      local evoItem = nil      
       if itemContainer:contains(evolvedRecipe:getResultItem()) then
-        LCMenu.addEvoSlice(menu, evolvedRecipe:getResultItem(), playerObj, LCMenu.addIngredients, evolvedRecipe:getOriginalname(), evolvedRecipe)
-      elseif itemContainer:contains(evolvedRecipe:getBaseItem()) then
-        LCMenu.addEvoSlice(menu, evolvedRecipe:getBaseItem(), playerObj, LCMenu.addIngredients, evolvedRecipe:getOriginalname(), evolvedRecipe)
+        evoItem = itemContainer:getItemFromTypeRecurse(evolvedRecipe:getResultItem())
+      elseif itemContainer:contains(evolvedRecipe:getBaseItem()) then        
+        evoItem = itemContainer:getItemFromTypeRecurse(evolvedRecipe:getBaseItem())
+      end      
+      if evoItem and (not instanceof(evoItem, "DrainableComboItem") or (instanceof(evoItem, "DrainableComboItem") and evoItem:getDelta() == 1.0)) then
+        LCMenu.checkAlreadyAdded(evoItem)
+        LCMenu.addEvoSlice(menu, evoItem, playerObj, LCMenu.addIngredients, evolvedRecipe:getOriginalname(), evolvedRecipe)
       end
     end    
   end
@@ -530,6 +628,54 @@ function LCMenu.create()
   LCMenu.menuEnd(menu)
 end
 
+function LCMenu.checkAlreadyAdded(evoItem)  
+  if LCMenu.LOG.debug then print("checkAlreadyAdded: " .. tostring(#LCMenu.currentIngredients)) end
+  local ingAlreadyUse = evoItem:getExtraItems()
+  if ingAlreadyUse then
+    local size = ingAlreadyUse:size()
+    for i = 0, size - 1 do
+      local itemFullType = ingAlreadyUse:get(i)
+      local dummyItem = InventoryItemFactory.CreateItem(itemFullType)
+      local md = dummyItem:getModData()
+      md.lcIgnore = true
+      table.insert(LCMenu.currentIngredients, dummyItem)
+    end
+  end
+  
+  if instanceof(evoItem, "Food") then
+    local spicesAlreadyUse = evoItem:getSpices()  
+    if spicesAlreadyUse then
+      local size = spicesAlreadyUse:size()
+      for i = 0, size - 1 do
+        local itemFullType = spicesAlreadyUse:get(i)
+        local dummyItem = InventoryItemFactory.CreateItem(itemFullType)
+        local md = dummyItem:getModData()
+        md.lcIgnore = true
+        table.insert(LCMenu.currentIngredients, dummyItem)
+      end
+    end
+  end
+  if LCMenu.LOG.debug then print("checkAlreadyAdded: " .. tostring(#LCMenu.currentIngredients)) end
+end
+
+--[[
+* Create the radial menu
+* @param InventoryItem evoItem       - The base/result item
+* @param IsoPlayer playerObj         - The player object
+* @param EvolvedRecipe evolvedRecipe - The evolved recipe object
+]]
+function LCMenu.createByMenu(evoItem, playerObj, evolvedRecipe)
+  
+  --Reset ingredients
+  LCMenu.currentIngredients = {}  
+  LCMenu.getAllIngredients(playerObj)
+  LCMenu.checkAlreadyAdded(evoItem)
+  LCMenu.addIngredients(playerObj, evolvedRecipe, evoItem)
+end
+
+--[[
+Debug stuff
+]]
 local function testContextMenu(playerIndex, context, worldObjects, test)
 	context:addOption("Test 1 - Open LC Menu", getSpecificPlayer(playerIndex), LCMenu.create)
 end
@@ -537,17 +683,20 @@ if LCMenu.LOG.debug then
   Events.OnFillWorldObjectContextMenu.Add(testContextMenu)
 end
 
+--[[
+* Handle event
+]]
 function LCMenu.OnFillInventoryObjectContextMenu(playerNum, context, items)
   local player = getSpecificPlayer(playerNum)
-  local itemContainer = player:getInventory()
   if player:getVehicle() then
     return -- can't work in a vehicle
   end
   
   local tempItem = nil
   local item = nil
+  local evoRecipe = nil
   
-  for k, v in ipairs(items) do
+  for _, v in ipairs(items) do
     if not instanceof(v, "InventoryItem") then
       if #v.items == 2 then
         tempItem = v.items[1]
@@ -561,20 +710,24 @@ function LCMenu.OnFillInventoryObjectContextMenu(playerNum, context, items)
       for _, evolvedRecipe in pairs(LetsCook.ALL_EVOLVED_RECIPES) do
         if tempItem:getType() == evolvedRecipe:getResultItem() or tempItem:getType() == evolvedRecipe:getBaseItem() then
           item = tempItem
+          evoRecipe = evolvedRecipe
           break
         end
       end    
     end
   end
 
-	if item then
-    context:addOption(getText("ContextMenu_LetsCookMenu"), item, LCMenu.create, player)
+	if item and (not instanceof(item, "DrainableComboItem") or (instanceof(item, "DrainableComboItem") and item:getDelta() == 1.0)) then
+    context:addOptionOnTop(getText("ContextMenu_LetsCookMenu"), item, LCMenu.createByMenu, player, evoRecipe)
   end
 
   return context
 end
 Events.OnFillInventoryObjectContextMenu.Add(LCMenu.OnFillInventoryObjectContextMenu)
 
+--[[
+* Key binding stuff
+]]
 function LCMenu.createBindings()
 	local bindings = {
 		{

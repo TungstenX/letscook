@@ -6,12 +6,13 @@
 │  _/      _/    _/  _/    _/_/  _/    _/        _/      _/      _/        _/    _/_/    _/  _/      │   
 │ _/        _/_/    _/      _/    _/_/_/  _/_/_/        _/      _/_/_/_/  _/      _/  _/      _/     │   
 ├────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ © Copyright 2024                                                                                   │ 
+│ © Copyright 2025                                                                                   │ 
 └────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 ┌────────────────┐
 │ Lets Cook Util │
 └────────────────┘
+Version: 1.03
 ]]
 
 LCUtil = LCUtil or {}
@@ -31,6 +32,11 @@ function LCUtil.endsWith(needle, haystack)
 end
 
 function LCUtil.contains(needle, array)
+  if instanceof(needle, "InventoryItem") then
+    if needle:getModData().lcIgnore then
+      return false
+    end
+  end
   for _, v in pairs(array) do
     if v == needle then
       return true
@@ -39,7 +45,7 @@ function LCUtil.contains(needle, array)
   return false
 end
 
-function LCUtil.containsItem(fullType, inventoryItemList)
+function LCUtil.containsFullType(fullType, inventoryItemList)
   for _, inventoryItem in pairs(inventoryItemList) do
     if inventoryItem:getFullType() == fullType then
       return true
@@ -59,7 +65,7 @@ function LCUtil.removeFirstItem(fullType, inventoryItemList)
 end
 
 function LCUtil.getFirstItem(fullType, inventoryItemList)
-  for index, inventoryItem in pairs(inventoryItemList) do
+  for _, inventoryItem in pairs(inventoryItemList) do
     if inventoryItem:getFullType() == fullType then
       return inventoryItem
     end
@@ -70,7 +76,7 @@ end
 function LCUtil.count(needle, array)
   local count = 0
   for _, v in pairs(array) do
-    if v == needle then
+    if v == needle and not v:getModData().lcIgnore then
       count = count + 1
     end
   end
