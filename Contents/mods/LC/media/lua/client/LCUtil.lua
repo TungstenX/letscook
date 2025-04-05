@@ -73,6 +73,17 @@ function LCUtil.getFirstItem(fullType, inventoryItemList)
   return nil
 end
 
+function LCUtil.countInventoryItemsIn(needle, array)
+  if not instanceof(needle, "InventoryItem") then return 0 end
+  local count = 0
+  for _, v in pairs(array) do
+    if v:getFullType() == needle:getFullType() then
+      count = count + 1
+    end
+  end
+  return count
+end
+
 function LCUtil.count(needle, array)
   local count = 0
   for _, v in pairs(array) do

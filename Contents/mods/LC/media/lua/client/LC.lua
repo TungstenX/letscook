@@ -71,11 +71,11 @@ function LetsCook.init()
     logo = logo .. "| _/      _/      _/      _/      _/     | |\n"
     logo = logo .. "+----------------------------------------+ |\n"
     logo = logo .. "| (c) Copyright 2025                     |/\n"
-    logo = logo .. "+----------------------------------------+\n"
-    logo = logo .. " \n"
+    logo = logo .. "+----------------------------------------+\n\n"
     logo = logo .. "             +------------+\n"
     logo = logo .. "             | Let's Cook |\n"
     logo = logo .. "             +------------+\n\n"
+    logo = logo .. "             Version: 1.03\n\n"
     print(logo)
   end
   
